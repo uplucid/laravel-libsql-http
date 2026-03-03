@@ -27,12 +27,12 @@ class LibSqlConnection extends DatabaseConnection
 
     protected function getDefaultQueryGrammar(): \Illuminate\Database\Query\Grammars\Grammar
     {
-        return new \Uplucid\LibSql\Query\Grammars\Grammar();
+        return new \Uplucid\LibSql\Query\Grammars\Grammar($this);
     }
 
     protected function getDefaultSchemaGrammar(): \Illuminate\Database\Schema\Grammars\Grammar
     {
-        return new \Uplucid\LibSql\Schema\Grammars\Grammar();
+        return new \Uplucid\LibSql\Schema\Grammars\Grammar($this);
     }
 
     public function getDriverName(): string
@@ -117,7 +117,12 @@ class LibSqlConnection extends DatabaseConnection
                 $results = [];
                 foreach ($data['results'] as $result) {
                     if ($result['type'] === 'ok') {
-                        $results[] = $result['response'];
+                        $response = $result['response'] ?? [];
+                        if (isset($response['result']) && is_array($response['result'])) {
+                            $results[] = $response['result'];
+                        } else {
+                            $results[] = $response;
+                        }
                     } else {
                         throw new \Exception($result['error']['message'] ?? 'Unknown error');
                     }
@@ -150,7 +155,13 @@ class LibSqlConnection extends DatabaseConnection
             return [];
         }
 
-        $columns = $response['cols'];
+        $columns = array_map(function ($column, $index) {
+            if (is_array($column)) {
+                return $column['name'] ?? (string) $index;
+            }
+
+            return $column;
+        }, $response['cols'], array_keys($response['cols']));
         $rows = $response['rows'];
 
         $output = [];
@@ -222,7 +233,7 @@ class LibSqlConnection extends DatabaseConnection
         $this->execute('COMMIT');
     }
 
-    public function rollBack()
+    public function rollBack($toLevel = null)
     {
         $this->execute('ROLLBACK');
     }
