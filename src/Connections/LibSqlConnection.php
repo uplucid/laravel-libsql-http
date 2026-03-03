@@ -80,9 +80,11 @@ class LibSqlConnection extends DatabaseConnection
 
     protected function execute(string $sql, array $bindings = []): array
     {
+        $preparedBindings = $this->prepareBindings($bindings);
+
         $stmt = [
             'sql' => $sql,
-            'args' => array_values($bindings),
+            'args' => array_map(fn ($binding) => $this->toHranaValue($binding), array_values($preparedBindings)),
         ];
 
         $payload = [
@@ -177,6 +179,35 @@ class LibSqlConnection extends DatabaseConnection
         return $output;
     }
 
+    protected function toHranaValue($value): array
+    {
+        if (is_null($value)) {
+            return ['type' => 'null'];
+        }
+
+        if (is_bool($value)) {
+            return ['type' => 'integer', 'value' => $value ? '1' : '0'];
+        }
+
+        if (is_int($value)) {
+            return ['type' => 'integer', 'value' => (string) $value];
+        }
+
+        if (is_float($value)) {
+            return ['type' => 'float', 'value' => $value];
+        }
+
+        if (is_resource($value)) {
+            $value = stream_get_contents($value);
+        }
+
+        if (is_string($value) && ! mb_check_encoding($value, 'UTF-8')) {
+            return ['type' => 'blob', 'base64' => base64_encode($value)];
+        }
+
+        return ['type' => 'text', 'value' => (string) $value];
+    }
+
     protected function mixed($value)
     {
         return $this->parseValue($value);
@@ -191,6 +222,8 @@ class LibSqlConnection extends DatabaseConnection
                 case 'integer':
                     return (int) ($value['value'] ?? $value);
                 case 'real':
+                    return (float) ($value['value'] ?? $value);
+                case 'float':
                     return (float) ($value['value'] ?? $value);
                 case 'text':
                     return (string) ($value['value'] ?? $value);
